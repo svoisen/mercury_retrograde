@@ -25,7 +25,7 @@
 
 #include "mma7260q.h" // Accelerometer library
  
-#define DEBUG false // Set to true for debugging, false for off
+#define DEBUG true // Set to true for debugging, false for off
 
 #if DEBUG
 #define DEBUG_BAUD 9600
@@ -85,23 +85,9 @@
 #define Y_PIN 1
 #define Z_PIN 2
 
-#define MIN_X 0
-#define MAX_X 582
-#define MIN_Y 108
-#define MAX_Y 562
-#define MIN_Z 22
-#define MAX_Z 678
-
-#define X_SHAKE_THRESHOLD 25
-#define Y_SHAKE_THRESHOLD 25
-#define Z_SHAKE_THRESHOLD 25
-
-#define Z_SHAKE_MAX 500
-#define Z_SHAKE_MIN 300
-#define Y_SHAKE_MAX 500
-#define Y_SHAKE_MIN 300
-#define X_SHAKE_MAX 500
-#define X_SHAKE_MIN 300
+#define X_SHAKE_THRESHOLD 50
+#define Y_SHAKE_THRESHOLD 50
+#define Z_SHAKE_THRESHOLD 50
 
 #define SHAKE_PHASE_1 0
 #define SHAKE_PHASE_2 1
@@ -273,13 +259,6 @@ Serial.println( "Version 001" );
   setDisplayPinsMode( INPUT );
   checkExternalPower();
   
-  accelerometer.autoZeroCalibration( max(0, analogRead( X_PIN ) - X_SHAKE_THRESHOLD - 10), max(0, analogRead( Y_PIN ) - Y_SHAKE_THRESHOLD - 10), max(0, analogRead( Z_PIN ) - Z_SHAKE_THRESHOLD - 10) );
-  accelerometer.autoZeroCalibration( min(1023, analogRead( X_PIN ) + X_SHAKE_THRESHOLD + 10), min(1023, analogRead( Y_PIN ) + Y_SHAKE_THRESHOLD + 10), min(1023, analogRead( Z_PIN ) + Z_SHAKE_THRESHOLD + 10) );
-  
-  // Setup accelerometer
-  //accelerometer.autoZeroCalibration(MIN_X,MIN_Y,MIN_Z);
-  //accelerometer.autoZeroCalibration(MAX_X,MAX_Y,MAX_Z);
-  
   // Setup alarm
   pinMode( PIEZO_PIN, OUTPUT );
 
@@ -307,9 +286,19 @@ void loop()
         return;
         
       outputTime( hours, minutes, seconds );
+      
+      // Check if the accelerometer has been manually calibrated by rotating clock
+      int xmax, ymax, zmax;
+      int xmin, ymin, zmin;
+  
+      accelerometer.getMaxValues( &xmax, &ymax, &zmax );
+      accelerometer.getMinValues( &xmin, &ymin, &zmin );
+      
+      if(xmax - xmin < X_SHAKE_THRESHOLD || ymax - ymin < Y_SHAKE_THRESHOLD || zmax - zmin < Z_SHAKE_THRESHOLD)
+        return;
         
       // Check for input to switch modes
-      if( detectShake( X_PIN ) ) {
+      if( detectShake( Y_PIN ) ) {
         if( alarmOn ) {
           stopAlarm();
         }
@@ -324,7 +313,7 @@ void loop()
         }
       }
       
-      if( detectShake( Y_PIN ) ) {
+      if( detectShake( X_PIN ) ) {
         if( alarmOn ) {
           stopAlarm();
         }
@@ -363,13 +352,13 @@ void loop()
       
     case SET_TIME:
       // Check for input to switch modes
-      if( detectShake( X_PIN ) ) {
+      if( detectShake( Y_PIN ) ) {
         mode = RUN;
         playTune( TONE_UP2, true );
         return;
       }
       
-      updateScrollVelocity( X_PIN );          
+      updateScrollVelocity( Y_PIN );          
       
       // Only flash when not scrolling through time
       if( scrollVelocity != 0 ) {
@@ -391,7 +380,7 @@ void loop()
       updateTime(); // Keep the clock running
       
       // Check for input to switch modes
-      if( detectShake( Y_PIN ) ) {
+      if( detectShake( X_PIN ) ) {
         mode = RUN;
         digitalWrite( ALARM_INDICATOR_PIN, alarmEnabled );
         playTune( TONE_UP, true );
@@ -403,7 +392,7 @@ void loop()
         return;
       }
       
-      updateScrollVelocity( Y_PIN );
+      updateScrollVelocity( X_PIN );
       
       // Always flash alarm indicator
       digitalWrite( ALARM_INDICATOR_PIN, updateFlash() );
@@ -750,20 +739,20 @@ boolean detectShake( int pin )
   switch( pin ) {
     case Z_PIN:
       phasePtr = &zShakePhase;
-      max = zmax - Z_SHAKE_THRESHOLD;
-      min = zmin + Z_SHAKE_THRESHOLD;
+      max = max(0, zmax - Z_SHAKE_THRESHOLD);
+      min = min(1023, zmin + Z_SHAKE_THRESHOLD);
       break;
       
     case Y_PIN:
       phasePtr = &yShakePhase;
-      max = ymax - Y_SHAKE_THRESHOLD;
-      min = ymin + Y_SHAKE_THRESHOLD;
+      max = max(0, ymax - Y_SHAKE_THRESHOLD);
+      min = min(1023, ymin + Y_SHAKE_THRESHOLD);
       break;
       
     case X_PIN:
       phasePtr = &xShakePhase;
-      max = xmax - X_SHAKE_THRESHOLD;
-      min = xmin + X_SHAKE_THRESHOLD;
+      max = max(0, xmax - X_SHAKE_THRESHOLD);
+      min = min(1023, xmin + X_SHAKE_THRESHOLD);
       break;
   }
   
@@ -787,11 +776,12 @@ boolean detectShake( int pin )
         
     case SHAKE_PHASE_2:
       if( read >= max && curMillis - lastShakeMillis <= SHAKE_TIMEOUT ) {
-        *phasePtr = SHAKE_PHASE_3;
-        lastShakeMillis = curMillis;
+        *phasePtr = SHAKE_PHASE_1;
+        //lastShakeMillis = curMillis;
+        return true;
       }
       return false;
-    
+    /*
     case SHAKE_PHASE_3:
       if( read <= min && curMillis - lastShakeMillis <= SHAKE_TIMEOUT ) {
         *phasePtr = SHAKE_PHASE_4;
@@ -805,6 +795,7 @@ boolean detectShake( int pin )
         return true;
       }
       return false;
+      */
   }
 }
 
